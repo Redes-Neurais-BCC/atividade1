@@ -678,102 +678,353 @@ def linear_regression_analysis(players_df, games_df):
         
         st.markdown("---")
         st.subheader("📊 Visualizações")
-        
-        tab1, tab2, tab3, tab4 = st.tabs([
-            "Dispersão com Regressão", 
-            "Predição vs Realidade", 
-            "Resíduos", 
-            "Importância das Variáveis"
+
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            "📊 Dispersão com Linha de Regressão",
+            "🎯 Predição vs Realidade",
+            "🔄 Matriz de Erro Categorizado",
+            "📈 Análise de Erro por Faixa",
+            "📉 Tendência com Intervalo de Confiança"
         ])
         
         with tab1:
+            # Diagrama de Dispersão com Linha de Regressão
             if len(selected_features) > 0:
                 first_feature = selected_features[0]
-                
+                first_feature_name = feature_options.get(first_feature, first_feature)
+                target_name = target_options[target_var]
+
                 fig = px.scatter(
-                    df, 
-                    x=first_feature, 
+                    df,
+                    x=first_feature,
                     y=target_var,
-                    title=f"{target_options[target_var]} vs {feature_options.get(first_feature, first_feature)}",
+                    title=f"Dispersão com Linha de Regressão: {target_name} vs {first_feature_name}",
+                    labels={
+                        first_feature: first_feature_name,
+                        target_var: target_name
+                    },
                     trendline="ols",
                     trendline_color_override="red"
                 )
-                
-                fig.update_layout(height=500)
+
+                fig.update_layout(
+                    height=500,
+                    xaxis_title=first_feature_name,
+                    yaxis_title=target_name
+                )
+
                 st.plotly_chart(fig, use_container_width=True)
-        
+                st.caption(f"📌 A linha vermelha representa a melhor linha reta que se ajusta aos dados (regressão linear).")
+
         with tab2:
+            # Gráfico de Predição vs. Realidade
             pred_real_df = pd.DataFrame({
                 'Real': np.concatenate([y_train, y_test]),
                 'Predito': np.concatenate([y_pred_train, y_pred_test]),
                 'Tipo': ['Treino'] * len(y_train) + ['Teste'] * len(y_test)
             })
-            
+
             fig = px.scatter(
                 pred_real_df,
                 x='Real',
                 y='Predito',
                 color='Tipo',
                 title="Valores Preditos vs Valores Reais",
+                labels={
+                    'Real': f'Valor Real ({target_options[target_var]})',
+                    'Predito': f'Valor Predito ({target_options[target_var]})',
+                    'Tipo': 'Conjunto de Dados'
+                },
                 color_discrete_map={'Treino': 'blue', 'Teste': 'red'}
             )
-            
+
             min_val = min(pred_real_df['Real'].min(), pred_real_df['Predito'].min())
             max_val = max(pred_real_df['Real'].max(), pred_real_df['Predito'].max())
-            
+
             fig.add_trace(go.Scatter(
                 x=[min_val, max_val],
                 y=[min_val, max_val],
                 mode='lines',
                 name='Predição Perfeita',
-                line=dict(dash='dash', color='green')
+                line=dict(dash='dash', color='green', width=2),
+                hovertemplate='<b>Linha de Predição Perfeita</b><br>Real: %{x:.2f}<br>Predito: %{y:.2f}<extra></extra>'
             ))
-            
-            fig.update_layout(height=500)
+
+            fig.update_layout(
+                height=500,
+                xaxis_title=f'Valor Real ({target_options[target_var]})',
+                yaxis_title=f'Valor Predito ({target_options[target_var]})'
+            )
+
             st.plotly_chart(fig, use_container_width=True)
-        
+            st.caption(f"📌 Pontos próximos à linha verde (diagonal) indicam predições mais precisas.")
+
+            # Métricas de erro
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                mae_test = np.mean(np.abs(y_test - y_pred_test))
+                st.metric("MAE (Teste)", f"{mae_test:.2f}")
+            with col2:
+                st.metric("RMSE (Teste)", f"{test_rmse:.2f}")
+            with col3:
+                st.metric("R² (Teste)", f"{test_r2:.3f}")
+
         with tab3:
-            residuals_train = y_train - y_pred_train
-            residuals_test = y_test - y_pred_test
-            
-            residuals_df = pd.DataFrame({
-                'Predito': np.concatenate([y_pred_train, y_pred_test]),
-                'Resíduo': np.concatenate([residuals_train, residuals_test]),
-                'Tipo': ['Treino'] * len(y_train) + ['Teste'] * len(y_test)
-            })
-            
-            fig = px.scatter(
-                residuals_df,
-                x='Predito',
-                y='Resíduo',
-                color='Tipo',
-                title="Análise de Resíduos",
-                color_discrete_map={'Treino': 'blue', 'Teste': 'red'}
+            # Matriz de Erro Categorizado (para Regressão Linear)
+            target_name = target_options[target_var]
+
+            # Categorizar valores em 3 faixas: Baixo, Médio, Alto
+            y_all = np.concatenate([y_train, y_test])
+            y_pred_all = np.concatenate([y_pred_train, y_pred_test])
+
+            # Definir quartis para categorização
+            q1, q2, q3 = np.percentile(y_all, [25, 50, 75])
+
+            def categorize(values):
+                categories = []
+                for v in values:
+                    if v <= q1:
+                        categories.append('Baixo')
+                    elif v <= q3:
+                        categories.append('Médio')
+                    else:
+                        categories.append('Alto')
+                return categories
+
+            y_real_cat = categorize(y_test)
+            y_pred_cat = categorize(y_pred_test)
+
+            # Criar matriz de confusão para categorias
+            from sklearn.metrics import confusion_matrix as cm_sklearn
+            categories_order = ['Baixo', 'Médio', 'Alto']
+            cm_cat = cm_sklearn(y_real_cat, y_pred_cat, labels=categories_order)
+
+            # Criar heatmap
+            fig = px.imshow(
+                cm_cat,
+                title=f"Matriz de Erro Categorizado - {target_name}",
+                labels=dict(x="Categoria Predita", y="Categoria Real", color="Quantidade"),
+                x=categories_order,
+                y=categories_order,
+                color_continuous_scale='Blues',
+                text_auto=True
             )
-            
-            fig.add_hline(y=0, line_dash="dash", line_color="green")
-            
-            fig.update_layout(height=500)
+
+            fig.update_layout(
+                height=500,
+                xaxis_title="Categoria Predita",
+                yaxis_title="Categoria Real"
+            )
+
+            fig.update_traces(
+                hovertemplate="<b>Real:</b> %{y}<br><b>Predito:</b> %{x}<br><b>Quantidade:</b> %{z}<extra></extra>"
+            )
+
             st.plotly_chart(fig, use_container_width=True)
-        
+            st.caption(f"📌 Valores de {target_name} foram categorizados em 3 faixas: Baixo (≤{q1:.1f}), Médio ({q1:.1f}-{q3:.1f}), Alto (≥{q3:.1f}). Diagonal principal mostra predições corretas.")
+
+            # Mostrar acurácia categórica
+            correct_cat = sum([1 for r, p in zip(y_real_cat, y_pred_cat) if r == p])
+            accuracy_cat = correct_cat / len(y_real_cat)
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Acurácia Categórica", f"{accuracy_cat:.1%}")
+            with col2:
+                st.metric("Predições Corretas", f"{correct_cat}/{len(y_real_cat)}")
+
         with tab4:
-            importance_df = pd.DataFrame({
-                'Variável': [feature_options.get(f, f) for f in selected_features],
-                'Importância': np.abs(model.coef_)
-            }).sort_values('Importância', ascending=True)
-            
-            fig = px.bar(
-                importance_df,
-                x='Importância',
-                y='Variável',
+            # Análise de Erro por Faixa de Valores
+            target_name = target_options[target_var]
+
+            # Criar faixas de valores
+            y_test_array = np.array(y_test)
+            y_pred_test_array = np.array(y_pred_test)
+
+            # Calcular erros
+            errors = np.abs(y_test_array - y_pred_test_array)
+            percent_errors = (errors / (y_test_array + 1e-10)) * 100  # Adicionar epsilon para evitar divisão por zero
+
+            # Criar quartis para faixas
+            q1, q2, q3 = np.percentile(y_test_array, [25, 50, 75])
+
+            def get_range_label(value):
+                if value <= q1:
+                    return f'Baixo (≤{q1:.1f})'
+                elif value <= q2:
+                    return f'Médio-Baixo ({q1:.1f}-{q2:.1f})'
+                elif value <= q3:
+                    return f'Médio-Alto ({q2:.1f}-{q3:.1f})'
+                else:
+                    return f'Alto (≥{q3:.1f})'
+
+            ranges = [get_range_label(v) for v in y_test_array]
+
+            # Criar DataFrame para análise
+            error_df = pd.DataFrame({
+                'Valor Real': y_test_array,
+                'Erro Absoluto': errors,
+                'Erro Percentual (%)': percent_errors,
+                'Faixa': ranges
+            })
+
+            # Gráfico de barras com erro médio por faixa
+            error_by_range = error_df.groupby('Faixa')['Erro Absoluto'].agg(['mean', 'std']).reset_index()
+            error_by_range = error_by_range.sort_values('mean')
+
+            fig = go.Figure()
+
+            fig.add_trace(go.Bar(
+                x=error_by_range['mean'],
+                y=error_by_range['Faixa'],
                 orientation='h',
-                title="Importância das Variáveis (Valor Absoluto dos Coeficientes)",
-                color='Importância',
-                color_continuous_scale='viridis'
+                name='Erro Médio',
+                marker=dict(color='blue'),
+                error_x=dict(type='data', array=error_by_range['std'], visible=True),
+                hovertemplate='<b>%{y}</b><br>Erro Médio: %{x:.2f}<extra></extra>'
+            ))
+
+            fig.update_layout(
+                title=f"Erro Médio por Faixa de Valores - {target_name}",
+                xaxis_title="Erro Absoluto Médio",
+                yaxis_title="Faixa de Valores",
+                height=400,
+                showlegend=False
             )
-            
-            fig.update_layout(height=500)
+
             st.plotly_chart(fig, use_container_width=True)
+            st.caption(f"📌 Barras mostram o erro absoluto médio em cada faixa de {target_name}. Barras de erro indicam o desvio padrão.")
+
+            # Boxplot de erros por faixa
+            fig2 = px.box(
+                error_df,
+                x='Faixa',
+                y='Erro Percentual (%)',
+                title=f"Distribuição do Erro Percentual por Faixa - {target_name}",
+                labels={
+                    'Faixa': 'Faixa de Valores',
+                    'Erro Percentual (%)': 'Erro Percentual (%)'
+                },
+                color='Faixa'
+            )
+
+            fig2.update_layout(height=400, showlegend=False)
+            st.plotly_chart(fig2, use_container_width=True)
+            st.caption("📌 Boxplot mostra a distribuição dos erros percentuais em cada faixa. Idealmente, os erros devem ser pequenos e consistentes.")
+
+            # Métricas por faixa
+            st.markdown("### 📊 Métricas por Faixa")
+
+            cols = st.columns(len(error_by_range))
+            for idx, (_, row) in enumerate(error_by_range.iterrows()):
+                with cols[idx]:
+                    st.metric(
+                        row['Faixa'],
+                        f"{row['mean']:.2f}",
+                        delta=f"±{row['std']:.2f}",
+                        delta_color="off"
+                    )
+
+        with tab5:
+            # Gráfico de Tendência com Intervalo de Confiança
+            if len(selected_features) > 0:
+                first_feature = selected_features[0]
+                first_feature_name = feature_options.get(first_feature, first_feature)
+                target_name = target_options[target_var]
+
+                # Criar dados para a linha de tendência
+                feature_values = X[first_feature].values
+                feature_min, feature_max = feature_values.min(), feature_values.max()
+                feature_range = np.linspace(feature_min, feature_max, 100)
+
+                # Criar matriz de features para predição (usando médias para outras features)
+                X_trend = np.zeros((len(feature_range), len(selected_features)))
+                for i, feat in enumerate(selected_features):
+                    if feat == first_feature:
+                        X_trend[:, i] = feature_range
+                    else:
+                        X_trend[:, i] = X[feat].mean()
+
+                # Predizer valores
+                y_trend = model.predict(X_trend)
+
+                # Calcular intervalo de confiança (95%)
+                from scipy import stats
+
+                # Calcular o erro padrão da predição
+                residuals = y_train - y_pred_train
+                mse = np.mean(residuals**2)
+                n = len(y_train)
+                p = len(selected_features)
+
+                # Graus de liberdade
+                df_error = n - p - 1
+
+                # t-statistic para 95% de confiança
+                t_stat = stats.t.ppf(0.975, df_error)
+
+                # Erro padrão (aproximação simplificada)
+                se = np.sqrt(mse * (1 + 1/n))
+                ci_margin = t_stat * se
+
+                ci_lower = y_trend - ci_margin
+                ci_upper = y_trend + ci_margin
+
+                # Criar gráfico
+                fig = go.Figure()
+
+                # Adicionar intervalo de confiança
+                fig.add_trace(go.Scatter(
+                    x=feature_range,
+                    y=ci_upper,
+                    mode='lines',
+                    line=dict(width=0),
+                    showlegend=False,
+                    hoverinfo='skip'
+                ))
+
+                fig.add_trace(go.Scatter(
+                    x=feature_range,
+                    y=ci_lower,
+                    mode='lines',
+                    fill='tonexty',
+                    fillcolor='rgba(68, 68, 68, 0.2)',
+                    line=dict(width=0),
+                    name='Intervalo de Confiança (95%)',
+                    hovertemplate=f'<b>{first_feature_name}:</b> %{{x:.2f}}<br><b>IC Inferior:</b> %{{y:.2f}}<extra></extra>'
+                ))
+
+                # Adicionar linha de tendência
+                fig.add_trace(go.Scatter(
+                    x=feature_range,
+                    y=y_trend,
+                    mode='lines',
+                    name='Predição Média',
+                    line=dict(color='blue', width=3),
+                    hovertemplate=f'<b>{first_feature_name}:</b> %{{x:.2f}}<br><b>Predição:</b> %{{y:.2f}}<extra></extra>'
+                ))
+
+                # Adicionar pontos reais
+                fig.add_trace(go.Scatter(
+                    x=X[first_feature].values,
+                    y=y.values,
+                    mode='markers',
+                    name='Observações Reais',
+                    marker=dict(size=6, color='red', opacity=0.5),
+                    hovertemplate=f'<b>{first_feature_name}:</b> %{{x:.2f}}<br><b>{target_name}:</b> %{{y:.2f}}<extra></extra>'
+                ))
+
+                fig.update_layout(
+                    title=f"Tendência com Intervalo de Confiança (95%): {target_name} vs {first_feature_name}",
+                    xaxis_title=first_feature_name,
+                    yaxis_title=target_name,
+                    height=500,
+                    showlegend=True,
+                    hovermode='closest'
+                )
+
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption(f"📌 A linha azul mostra a predição média em função de {first_feature_name}. A área sombreada representa o intervalo de confiança de 95%, indicando onde estão 95% das predições esperadas.")
 
 def logistic_regression_analysis(players_df, games_df):
     """Análise de Regressão Logística"""
@@ -945,62 +1196,343 @@ def logistic_regression_analysis(players_df, games_df):
         
         st.markdown("---")
         st.subheader("📊 Visualizações")
-        
-        tab1, tab2, tab3 = st.tabs([
-            "Matriz de Confusão", 
-            "Probabilidades", 
-            "Importância das Variáveis"
+
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            "📊 Dispersão com Curva Logística",
+            "🎯 Predição vs Realidade",
+            "🔄 Matriz de Confusão",
+            "📈 Curva ROC",
+            "📉 Tendência com Intervalo de Confiança"
         ])
         
         with tab1:
+            # Diagrama de Dispersão com Curva Logística
+            if len(selected_features) > 0:
+                first_feature = selected_features[0]
+                first_feature_name = feature_options.get(first_feature, first_feature)
+
+                # Dados originais (não normalizados)
+                scatter_df = pd.DataFrame({
+                    'Variável': df[first_feature].iloc[X_train.shape[0]:],
+                    'Classe Real': y_test.map({0: 'Não', 1: 'Sim'}),
+                    'Probabilidade': y_pred_proba_test
+                })
+
+                # Criar gráfico de dispersão
+                fig = px.scatter(
+                    scatter_df,
+                    x='Variável',
+                    y='Probabilidade',
+                    color='Classe Real',
+                    title=f"Dispersão com Curva Logística: {first_feature_name}",
+                    labels={
+                        'Variável': first_feature_name,
+                        'Probabilidade': 'Probabilidade Predita (Classe = Sim)',
+                        'Classe Real': 'Classe Real'
+                    },
+                    color_discrete_map={'Não': 'red', 'Sim': 'blue'}
+                )
+
+                # Adicionar linha em 0.5 (threshold de decisão)
+                fig.add_hline(
+                    y=0.5,
+                    line_dash="dash",
+                    line_color="green",
+                    annotation_text="Threshold de Decisão (0.5)",
+                    annotation_position="right"
+                )
+
+                fig.update_layout(
+                    height=500,
+                    xaxis_title=first_feature_name,
+                    yaxis_title="Probabilidade de Classe = Sim",
+                    showlegend=True
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption(f"📌 Pontos acima da linha verde são classificados como 'Sim', abaixo como 'Não'.")
+
+        with tab2:
+            # Gráfico de Predição vs. Realidade
+            pred_real_df = pd.DataFrame({
+                'Índice': range(len(y_test)),
+                'Real': y_test.map({0: 'Não', 1: 'Sim'}),
+                'Predito': [('Sim' if p == 1 else 'Não') for p in y_pred_test],
+                'Correto': y_test == y_pred_test
+            })
+
+            fig = go.Figure()
+
+            # Adicionar valores reais
+            fig.add_trace(go.Scatter(
+                x=pred_real_df['Índice'],
+                y=y_test,
+                mode='markers',
+                name='Valor Real',
+                marker=dict(size=10, color='blue', symbol='circle'),
+                text=pred_real_df['Real'],
+                hovertemplate='<b>Real:</b> %{text}<br><b>Índice:</b> %{x}<extra></extra>'
+            ))
+
+            # Adicionar valores preditos
+            fig.add_trace(go.Scatter(
+                x=pred_real_df['Índice'],
+                y=y_pred_test,
+                mode='markers',
+                name='Predição',
+                marker=dict(
+                    size=8,
+                    color=['green' if c else 'red' for c in pred_real_df['Correto']],
+                    symbol='x'
+                ),
+                text=pred_real_df['Predito'],
+                hovertemplate='<b>Predito:</b> %{text}<br><b>Índice:</b> %{x}<extra></extra>'
+            ))
+
+            fig.update_layout(
+                title="Comparação: Valores Reais vs Predições",
+                xaxis_title="Índice da Amostra (Conjunto de Teste)",
+                yaxis_title="Classe (0 = Não, 1 = Sim)",
+                yaxis=dict(tickmode='linear', tick0=0, dtick=1),
+                height=500,
+                showlegend=True,
+                hovermode='closest'
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+            st.caption(f"📌 Marcas verdes indicam predições corretas, vermelhas indicam erros.")
+
+            # Adicionar tabela de resumo
+            correct_count = pred_real_df['Correto'].sum()
+            total_count = len(pred_real_df)
+            st.info(f"**Acurácia no conjunto de teste:** {correct_count}/{total_count} ({test_accuracy:.1%})")
+
+        with tab3:
+            # Matriz de Confusão
             cm = confusion_matrix(y_test, y_pred_test)
-            
+
             fig = px.imshow(
                 cm,
-                title="Matriz de Confusão",
-                labels=dict(x="Predito", y="Real"),
+                title="Matriz de Confusão - Desempenho do Modelo",
+                labels=dict(x="Classe Predita", y="Classe Real", color="Quantidade"),
                 x=['Não', 'Sim'],
                 y=['Não', 'Sim'],
                 color_continuous_scale='Blues',
                 text_auto=True
             )
-            fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with tab2:
-            prob_df = pd.DataFrame({
-                'Probabilidade': y_pred_proba_test,
-                'Real': y_test
-            })
-            
-            fig = px.histogram(
-                prob_df,
-                x='Probabilidade',
-                color='Real',
-                title="Distribuição das Probabilidades Preditas",
-                nbins=20,
-                opacity=0.7
+            fig.update_layout(
+                height=500,
+                xaxis_title="Classe Predita",
+                yaxis_title="Classe Real"
             )
-            fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with tab3:
-            importance_df = pd.DataFrame({
-                'Variável': [feature_options.get(f, f) for f in selected_features],
-                'Importância': np.abs(model.coef_[0])
-            }).sort_values('Importância', ascending=True)
-            
-            fig = px.bar(
-                importance_df,
-                x='Importância',
-                y='Variável',
-                orientation='h',
-                title="Importância das Variáveis (Valor Absoluto dos Coeficientes)",
-                color='Importância',
-                color_continuous_scale='plasma'
+            fig.update_traces(
+                hovertemplate="<b>Real:</b> %{y}<br><b>Predito:</b> %{x}<br><b>Quantidade:</b> %{z}<extra></extra>"
             )
-            fig.update_layout(height=500)
             st.plotly_chart(fig, use_container_width=True)
+            st.caption("📌 Diagonal principal (azul escuro) representa predições corretas.")
+
+            # Adicionar métricas da matriz de confusão
+            tn, fp, fn, tp = cm.ravel() if len(cm.ravel()) == 4 else (0, 0, 0, 0)
+
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Verdadeiros Positivos", tp)
+            with col2:
+                st.metric("Verdadeiros Negativos", tn)
+            with col3:
+                st.metric("Falsos Positivos", fp)
+            with col4:
+                st.metric("Falsos Negativos", fn)
+
+        with tab4:
+            # Curva ROC (Receiver Operating Characteristic)
+            from sklearn.metrics import roc_curve, roc_auc_score
+
+            # Calcular a curva ROC
+            fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba_test)
+            auc_score = roc_auc_score(y_test, y_pred_proba_test)
+
+            # Criar o gráfico
+            fig = go.Figure()
+
+            # Adicionar a curva ROC
+            fig.add_trace(go.Scatter(
+                x=fpr,
+                y=tpr,
+                mode='lines',
+                name=f'Curva ROC (AUC = {auc_score:.3f})',
+                line=dict(color='blue', width=3),
+                hovertemplate='<b>FPR:</b> %{x:.3f}<br><b>TPR:</b> %{y:.3f}<extra></extra>'
+            ))
+
+            # Adicionar linha diagonal (classificador aleatório)
+            fig.add_trace(go.Scatter(
+                x=[0, 1],
+                y=[0, 1],
+                mode='lines',
+                name='Classificador Aleatório (AUC = 0.5)',
+                line=dict(dash='dash', color='red', width=2),
+                hovertemplate='<b>Linha de Referência</b><extra></extra>'
+            ))
+
+            # Adicionar ponto do threshold atual (0.5)
+            threshold_idx = np.argmin(np.abs(thresholds - 0.5))
+            fig.add_trace(go.Scatter(
+                x=[fpr[threshold_idx]],
+                y=[tpr[threshold_idx]],
+                mode='markers',
+                name='Threshold = 0.5',
+                marker=dict(size=12, color='green', symbol='star'),
+                hovertemplate=f'<b>Threshold = 0.5</b><br>FPR: {fpr[threshold_idx]:.3f}<br>TPR: {tpr[threshold_idx]:.3f}<extra></extra>'
+            ))
+
+            fig.update_layout(
+                title=f"Curva ROC (Receiver Operating Characteristic)<br>Área Sob a Curva (AUC) = {auc_score:.3f}",
+                xaxis_title="Taxa de Falsos Positivos (FPR) - False Positive Rate",
+                yaxis_title="Taxa de Verdadeiros Positivos (TPR) - True Positive Rate",
+                height=500,
+                showlegend=True,
+                hovermode='closest',
+                xaxis=dict(range=[0, 1]),
+                yaxis=dict(range=[0, 1])
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Interpretação do AUC
+            if auc_score >= 0.9:
+                interpretation = "🌟 Excelente! O modelo tem um desempenho muito alto."
+                color = "success"
+            elif auc_score >= 0.8:
+                interpretation = "✅ Bom! O modelo tem um desempenho satisfatório."
+                color = "success"
+            elif auc_score >= 0.7:
+                interpretation = "⚠️ Razoável. O modelo tem um desempenho aceitável, mas pode ser melhorado."
+                color = "warning"
+            else:
+                interpretation = "❌ Fraco. O modelo precisa de melhorias significativas."
+                color = "error"
+
+            if color == "success":
+                st.success(interpretation)
+            elif color == "warning":
+                st.warning(interpretation)
+            else:
+                st.error(interpretation)
+
+            st.caption("📌 A Curva ROC mostra a relação entre TPR (sensibilidade) e FPR (1-especificidade). Quanto mais próxima do canto superior esquerdo, melhor o modelo. AUC = 1.0 representa um classificador perfeito, AUC = 0.5 representa um classificador aleatório.")
+
+            # Métricas adicionais
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("AUC Score", f"{auc_score:.3f}")
+            with col2:
+                # Sensibilidade (TPR no threshold 0.5)
+                sensitivity = tpr[threshold_idx]
+                st.metric("Sensibilidade (TPR)", f"{sensitivity:.3f}")
+            with col3:
+                # Especificidade
+                specificity = 1 - fpr[threshold_idx]
+                st.metric("Especificidade", f"{specificity:.3f}")
+
+        with tab5:
+            # Gráfico de Tendência com Intervalo de Confiança
+            if len(selected_features) > 0:
+                first_feature = selected_features[0]
+                first_feature_name = feature_options.get(first_feature, first_feature)
+
+                # Criar dados para a curva de tendência
+                feature_values = df[first_feature].values
+                feature_min, feature_max = feature_values.min(), feature_values.max()
+                feature_range = np.linspace(feature_min, feature_max, 100)
+
+                # Criar matriz de features para predição (usando médias para outras features)
+                X_trend = np.zeros((len(feature_range), len(selected_features)))
+                for i, feat in enumerate(selected_features):
+                    if feat == first_feature:
+                        X_trend[:, i] = feature_range
+                    else:
+                        X_trend[:, i] = df[feat].mean()
+
+                # Normalizar
+                X_trend_scaled = scaler.transform(X_trend)
+
+                # Predizer probabilidades
+                proba_trend = model.predict_proba(X_trend_scaled)[:, 1]
+
+                # Calcular intervalo de confiança (aproximado usando bootstrap simples)
+                from scipy import stats
+                confidence_level = 0.95
+                z_score = stats.norm.ppf((1 + confidence_level) / 2)
+
+                # Desvio padrão estimado
+                std_error = np.sqrt(proba_trend * (1 - proba_trend) / len(y_train))
+                ci_lower = proba_trend - z_score * std_error
+                ci_upper = proba_trend + z_score * std_error
+
+                # Clipar para [0, 1]
+                ci_lower = np.clip(ci_lower, 0, 1)
+                ci_upper = np.clip(ci_upper, 0, 1)
+
+                # Criar gráfico
+                fig = go.Figure()
+
+                # Adicionar intervalo de confiança
+                fig.add_trace(go.Scatter(
+                    x=feature_range,
+                    y=ci_upper,
+                    mode='lines',
+                    line=dict(width=0),
+                    showlegend=False,
+                    hoverinfo='skip'
+                ))
+
+                fig.add_trace(go.Scatter(
+                    x=feature_range,
+                    y=ci_lower,
+                    mode='lines',
+                    fill='tonexty',
+                    fillcolor='rgba(68, 68, 68, 0.2)',
+                    line=dict(width=0),
+                    name=f'Intervalo de Confiança ({confidence_level:.0%})',
+                    hovertemplate=f'<b>{first_feature_name}:</b> %{{x:.2f}}<br><b>IC Inferior:</b> %{{y:.2%}}<extra></extra>'
+                ))
+
+                # Adicionar linha de tendência
+                fig.add_trace(go.Scatter(
+                    x=feature_range,
+                    y=proba_trend,
+                    mode='lines',
+                    name='Probabilidade Predita',
+                    line=dict(color='blue', width=3),
+                    hovertemplate=f'<b>{first_feature_name}:</b> %{{x:.2f}}<br><b>Probabilidade:</b> %{{y:.2%}}<extra></extra>'
+                ))
+
+                # Adicionar pontos reais
+                real_proba_df = pd.DataFrame({
+                    'feature': df[first_feature].iloc[len(y_train):].values,
+                    'real': y_test.values
+                })
+
+                fig.add_trace(go.Scatter(
+                    x=real_proba_df['feature'],
+                    y=real_proba_df['real'],
+                    mode='markers',
+                    name='Observações Reais',
+                    marker=dict(size=6, color='red', opacity=0.5),
+                    hovertemplate=f'<b>{first_feature_name}:</b> %{{x:.2f}}<br><b>Classe Real:</b> %{{y}}<extra></extra>'
+                ))
+
+                fig.update_layout(
+                    title=f"Tendência de Probabilidade com Intervalo de Confiança ({confidence_level:.0%})",
+                    xaxis_title=first_feature_name,
+                    yaxis_title="Probabilidade de Classe = Sim",
+                    height=500,
+                    showlegend=True,
+                    hovermode='closest'
+                )
+
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption(f"📌 A linha azul mostra a tendência da probabilidade em função de {first_feature_name}. A área sombreada representa o intervalo de confiança de {confidence_level:.0%}.")
 
 def prediction_interface(players_df, games_df):
     """Interface para predições específicas"""
