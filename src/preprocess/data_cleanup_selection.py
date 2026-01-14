@@ -14,10 +14,10 @@ PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 # === Arquivos de entrada ===
 GAMES_CSV = INTERIM_DIR / "dal-games-traduzido.csv"
 ROSTER_CSV = INTERIM_DIR / "dal-roster-traduzido.csv"
-PLAYERS_MEDIA_CSV = INTERIM_DIR / "dal-players-media-traduzido.csv"
 PLAYERS_TOTAL_CSV = INTERIM_DIR / "dal-players-total-traduzido.csv"
+PLAYERS_MEDIA_CSV = INTERIM_DIR / "dal-players-media-traduzido.csv"
 
-print("Iniciando limpeza e integração dos dados do Dallas Mavericks 2024–25\n")
+print("Iniciando limpeza e integração dos dados do Dallas Mavericks 2024–26\n")
 
 # === 1 - Jogos ===
 print("\nProcessando jogos...")
@@ -32,34 +32,15 @@ games_df["resultado"] = games_df["resultado"].map({"W": 1, "L": 0, 1: 1, 0: 0})
 # Remover hífens das datas
 games_df["data-jogo"] = games_df["data-jogo"].astype(str).str.replace("-", "")
 
-# Substituir valores ausentes por 0
 games_df.fillna(0, inplace=True)
-
-# === Selecionar colunas finais (mantendo consistência) ===
-colunas_games = [
-    "data-jogo", "resultado", "mando-de-jogo",
-    "pontos", "saldo-pontos", "arremessos-convertidos", "arremessos-tentados",
-    "porcentagem-arremessos", "triplos-convertidos", "triplos-tentados", "porcentagem-triplos",
-    "lances-livres-convertidos", "lances-livres-tentados", "porcentagem-lances-livres",
-    "rebotes-ofensivos", "rebotes-defensivos", "rebotes-totais",
-    "assistencias", "roubos", "tocos", "erros", "faltas"
-]
-colunas_games = [c for c in colunas_games if c in games_df.columns]
-
-games_clean = games_df[colunas_games].copy()
-
-# === Salvar ===
-games_clean.to_csv(PROCESSED_DIR / "dallas_games_2024-25.csv", index=False)
-print(f"Jogos limpos: {len(games_clean)} linhas")
+games_df.to_csv(PROCESSED_DIR / "dallas_games_2024_25_26.csv", index=False)
 
 
 # === 2 - Roster ===
-print("Processando roster...")
+print("\nProcessando roster...")
 roster_df = pd.read_csv(ROSTER_CSV)
 
-# Funções auxiliares
 def convert_height_to_cm(height_str):
-    """Converte altura de formato '6-7' (pés-polegadas) para cm."""
     match = re.match(r"(\d+)-(\d+)", str(height_str))
     if match:
         feet, inches = int(match.group(1)), int(match.group(2))
@@ -67,97 +48,140 @@ def convert_height_to_cm(height_str):
     return None
 
 def convert_weight_to_kg(weight_str):
-    """Converte peso de libras para kg."""
     try:
         return round(float(weight_str) * 0.453592, 1)
     except:
         return None
 
-# Converter unidades
 roster_df["altura-cm"] = roster_df["altura"].apply(convert_height_to_cm)
 roster_df["peso-kg"] = roster_df["peso"].apply(convert_weight_to_kg)
 
-# Mapeamento de posições
 position_map = {"G": 1, "F": 2, "F-C": 3, "C-F": 4, "C": 5}
 roster_df["posicao-g-f-fc-cf-c"] = roster_df["posicao"].map(position_map).fillna(0)
 
-# Selecionar colunas relevantes
-colunas_roster = [
-    "id-jogador", "nome-jogador", "posicao-g-f-fc-cf-c", "altura-cm", "peso-kg", "idade"
-]
-colunas_roster = [c for c in colunas_roster if c in roster_df.columns]
-
-roster_clean = roster_df[colunas_roster].copy()
-roster_clean.fillna("NA", inplace=True)
+colunas_roster = ["nome-jogador", "posicao-g-f-fc-cf-c", "altura-cm", "peso-kg", "idade"]
+roster_clean = roster_df[colunas_roster].drop_duplicates(subset=["nome-jogador"], keep="first")
 roster_clean.to_csv(INTERIM_DIR / "dal-roster-clean.csv", index=False)
-print(f"Roster limpo: {len(roster_clean)} linhas")
 
 
-# === 3 - Estatísticas dos Jogadores - Médias ===
-print("\nProcessando estatísticas (médias)...")
-players_media_df = pd.read_csv(PLAYERS_MEDIA_CSV)
-
-colunas_players = [
-    "id-jogador", "jogos-disputados", "minutos", "arremessos-convertidos", "arremessos-tentados",
-    "porcentagem-arremessos", "triplos-convertidos", "triplos-tentados",
-    "porcentagem-triplos", "lances-livres-convertidos", "lances-livres-tentados",
-    "porcentagem-lances-livres", "rebotes-ofensivos", "rebotes-defensivos",
-    "rebotes-totais", "assistencias", "erros", "roubos", "tocos",
-    "faltas", "pontos"
-]
-colunas_players = [c for c in colunas_players if c in players_media_df.columns]
-
-players_media_clean = players_media_df[colunas_players].copy()
-players_media_clean.fillna(0, inplace=True)
-players_media_clean.to_csv(INTERIM_DIR / "dal-players-media-clean.csv", index=False)
-print(f"Estatísticas médias limpas: {len(players_media_clean)} linhas")
-
-
-# === 4 - Estatísticas dos Jogadores - Acumuladas ===
-print("\nProcessando estatísticas (totais)...")
+# === 3 - Estatísticas Totais (somando 24–25 e 25–26) ===
+print("\nProcessando estatísticas totais...")
 players_total_df = pd.read_csv(PLAYERS_TOTAL_CSV)
 
-colunas_total = [c for c in colunas_players if c in players_total_df.columns]
-players_total_clean = players_total_df[colunas_total].copy()
-players_total_clean.fillna(0, inplace=True)
-players_total_clean.to_csv(INTERIM_DIR / "dal-players-total-clean.csv", index=False)
-print(f"Estatísticas totais limpas: {len(players_total_clean)} linhas")
+colunas_somar = [
+    "jogos-disputados", "minutos", "arremessos-convertidos", "arremessos-tentados",
+    "triplos-convertidos", "triplos-tentados",
+    "lances-livres-convertidos", "lances-livres-tentados",
+    "rebotes-ofensivos", "rebotes-defensivos", "rebotes-totais",
+    "assistencias", "erros", "roubos", "tocos", "faltas", "pontos"
+]
+colunas_somar = [c for c in colunas_somar if c in players_total_df.columns]
+
+players_total_sum = players_total_df.groupby("nome-jogador")[colunas_somar].sum().reset_index()
+
+# Calcular porcentagens totais
+players_total_sum["porcentagem-arremessos_total"] = (
+    players_total_sum["arremessos-convertidos"] / players_total_sum["arremessos-tentados"]
+).fillna(0) * 100
+
+players_total_sum["porcentagem-triplos_total"] = (
+    players_total_sum["triplos-convertidos"] / players_total_sum["triplos-tentados"]
+).fillna(0) * 100
+
+players_total_sum["porcentagem-lances-livres_total"] = (
+    players_total_sum["lances-livres-convertidos"] / players_total_sum["lances-livres-tentados"]
+).fillna(0) * 100
+
+# Adicionar sufixo _total
+for col in colunas_somar:
+    if col != "nome-jogador":
+        players_total_sum.rename(columns={col: f"{col}_total"}, inplace=True)
+
+players_total_sum.to_csv(INTERIM_DIR / "dal-players-total-somado.csv", index=False)
 
 
-# === 5 - Merge das estatísticas dos Jogadores (Roster + Médias) ===
-# === 5 - Merge das estatísticas dos Jogadores (Roster + Médias + Totais) ===
-print("\nCriando merge das estatísticas dos jogadores (roster + médias + totais)...")
+# === 4 - Estatísticas Médias (ponderadas) ===
+print("\nProcessando estatísticas médias ponderadas...")
+players_media_df = pd.read_csv(PLAYERS_MEDIA_CSV)
 
-if "id-jogador" in roster_clean.columns:
+colunas_media = [
+    "nome-jogador", "jogos-disputados", "minutos",
+    "arremessos-convertidos", "arremessos-tentados", "triplos-convertidos", "triplos-tentados",
+    "lances-livres-convertidos", "lances-livres-tentados",
+    "rebotes-ofensivos", "rebotes-defensivos", "rebotes-totais",
+    "assistencias", "erros", "roubos", "tocos", "faltas", "pontos"
+]
+players_media_df = players_media_df[colunas_media]
 
-    # --- Médias ---
-    players_media_ren = players_media_clean.copy()
-    players_media_ren = players_media_ren.add_suffix("_media")
-    players_media_ren.rename(columns={"id-jogador_media": "id-jogador"}, inplace=True)
+def weighted_avg(df, value_col, weight_col="jogos-disputados"):
+    try:
+        return (df[value_col] * df[weight_col]).sum() / df[weight_col].sum()
+    except ZeroDivisionError:
+        return 0
 
-    # --- Totais ---
-    players_total_ren = players_total_clean.copy()
-    players_total_ren = players_total_ren.add_suffix("_total")
-    players_total_ren.rename(columns={"id-jogador_total": "id-jogador"}, inplace=True)
+players_media_grouped = (
+    players_media_df.groupby("nome-jogador")
+    .apply(lambda g: pd.Series({
+        col: weighted_avg(g, col) if col != "jogos-disputados" else g["jogos-disputados"].sum()
+        for col in colunas_media if col != "nome-jogador"
+    }))
+    .reset_index()
+)
 
-    # --- Merge principal: Roster + Médias + Totais ---
-    merged = roster_clean.copy()
-    merged = pd.merge(merged, players_media_ren, on="id-jogador", how="left")
-    merged = pd.merge(merged, players_total_ren, on="id-jogador", how="left")
-    merged.fillna(0, inplace=True)
+# Calcular porcentagens médias
+players_media_grouped["porcentagem-arremessos_media"] = (
+    players_media_grouped["arremessos-convertidos"] / players_media_grouped["arremessos-tentados"]
+).fillna(0) * 100
 
-    # --- Criar coluna de eficiência simples (pontos por arremesso) ---
-    if "pontos_media" in merged.columns and "arremessos-tentados_media" in merged.columns:
-        merged["eficiencia-simples"] = (
-            merged["pontos_media"] / merged["arremessos-tentados_media"]
-        ).replace([float("inf"), -float("inf")], 0)
-    else:
-        merged["eficiencia-simples"] = 0
+players_media_grouped["porcentagem-triplos_media"] = (
+    players_media_grouped["triplos-convertidos"] / players_media_grouped["triplos-tentados"]
+).fillna(0) * 100
 
-    # --- Salvar arquivo final ---
-    merged.drop(columns=["id-jogador"], inplace=True)
-    merged.to_csv(PROCESSED_DIR / "dallas_players_2024-25.csv", index=False)
-    print(f"Merge completo salvo: dallas_players_2024-25.csv ({len(merged)} linhas)")
+players_media_grouped["porcentagem-lances-livres_media"] = (
+    players_media_grouped["lances-livres-convertidos"] / players_media_grouped["lances-livres-tentados"]
+).fillna(0) * 100
 
-else:
-    print("Coluna 'id-jogador' ausente no arquivo roster. Merge ignorado.")
+# Adicionar sufixo _media
+for col in colunas_media:
+    if col != "nome-jogador":
+        players_media_grouped.rename(columns={col: f"{col}_media"}, inplace=True)
+
+players_media_grouped.to_csv(INTERIM_DIR / "dal-players-media-ponderada.csv", index=False)
+
+
+# === 5 - Merge Final ===
+print("\nMesclando roster + médias + totais...")
+merged = pd.merge(roster_clean, players_media_grouped, on="nome-jogador", how="left")
+merged = pd.merge(merged, players_total_sum, on="nome-jogador", how="left")
+
+merged.fillna(0, inplace=True)
+
+# Eficiência simples
+merged["eficiencia-simples"] = (
+    merged["pontos_media"] / merged["arremessos-tentados_media"]
+).replace([float("inf"), -float("inf")], 0)
+
+# === 6 - Reorganizar colunas ===
+colunas_finais = [
+    "nome-jogador", "posicao-g-f-fc-cf-c", "altura-cm", "peso-kg", "idade",
+    "jogos-disputados_media", "minutos_media", "arremessos-convertidos_media", "arremessos-tentados_media",
+    "porcentagem-arremessos_media", "triplos-convertidos_media", "triplos-tentados_media",
+    "porcentagem-triplos_media", "lances-livres-convertidos_media", "lances-livres-tentados_media",
+    "porcentagem-lances-livres_media", "rebotes-ofensivos_media", "rebotes-defensivos_media",
+    "rebotes-totais_media", "assistencias_media", "erros_media", "roubos_media", "tocos_media",
+    "faltas_media", "pontos_media",
+    "jogos-disputados_total", "minutos_total", "arremessos-convertidos_total", "arremessos-tentados_total",
+    "porcentagem-arremessos_total", "triplos-convertidos_total", "triplos-tentados_total",
+    "porcentagem-triplos_total", "lances-livres-convertidos_total", "lances-livres-tentados_total",
+    "porcentagem-lances-livres_total", "rebotes-ofensivos_total", "rebotes-defensivos_total",
+    "rebotes-totais_total", "assistencias_total", "erros_total", "roubos_total", "tocos_total",
+    "faltas_total", "pontos_total", "eficiencia-simples"
+]
+merged = merged[colunas_finais]
+
+# Miles Kelly zerado, removendo para nao distorcer os calculos:
+merged = merged[merged["nome-jogador"] != "Miles Kelly"]
+
+# === Salvar ===
+merged.to_csv(PROCESSED_DIR / "dallas_players_2024_25_26.csv", index=False)
+print(f"\n✅ Arquivo final salvo: dallas_players_2024_25_26.csv ({len(merged)} linhas)")

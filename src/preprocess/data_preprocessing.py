@@ -9,10 +9,10 @@ INTERIM_DIR = DATA_DIR / "interim"
 INTERIM_DIR.mkdir(parents=True, exist_ok=True)
 
 # Caminhos dos CSVs originais
-games_csv = DATA_DIR / "original/dal_games_2024_25.csv"
-roster_csv = DATA_DIR / "original/dal_roster_2024_25.csv"
-player_stats_media_csv = DATA_DIR / "original/dal_players_season_stats_media_2024_25.csv"
-player_stats_total_csv = DATA_DIR / "original/dal_players_season_stats_acumulado_2024_25.csv"
+games_csv = DATA_DIR / "original/dal_games_2024_25_26.csv"
+roster_csv = DATA_DIR / "original/dal_roster_2024_25_26.csv"
+player_stats_media_csv = DATA_DIR / "original/dal_players_season_stats_media_2024_25_26.csv"
+player_stats_total_csv = DATA_DIR / "original/dal_players_season_stats_acumulado_2024_25_26.csv"
 
 # Caminho do mapeamento de colunas
 mapping_json = ROOT_DIR / "data" / "mappings" / "column_mapping.json"
